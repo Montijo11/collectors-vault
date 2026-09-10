@@ -175,13 +175,13 @@ export default function CatalogEditor() {
             )}
           </button>
           <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handlePhotoSelected}
-            className="hidden"
-          />
+  ref={fileInputRef}
+  type="file"
+  accept="image/*"
+  capture="environment"
+  onChange={handlePhotoSelected}
+  className="sr-only"
+/>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
