@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Car, CirclePlus, Loader2, ScanLine, Search, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -113,7 +113,7 @@ export default function CatalogEditor() {
     fileInputRef.current?.click();
   }
 
-  async function handlePhotoSelected(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
