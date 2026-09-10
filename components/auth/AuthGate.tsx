@@ -28,7 +28,8 @@ function AuthForms() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
 
-  async function handleSubmit() {
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setErrorMessage('');
     if (!email.trim() || !password.trim()) {
       setErrorMessage('Email and password are required.');
@@ -82,12 +83,14 @@ function AuthForms() {
           <>
             <div className="mb-4 flex rounded-xl border border-slate-800 p-1">
               <button
+                type="button"
                 onClick={() => setMode('login')}
                 className={`flex-1 rounded-lg py-2 text-xs font-semibold transition ${mode === 'login' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}
               >
                 Sign In
               </button>
               <button
+                type="button"
                 onClick={() => setMode('signup')}
                 className={`flex-1 rounded-lg py-2 text-xs font-semibold transition ${mode === 'signup' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}
               >
@@ -95,7 +98,7 @@ function AuthForms() {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-3">
               {errorMessage && (
                 <p className="rounded-lg bg-red-950/40 px-3 py-2 text-xs text-red-300">
                   {errorMessage}
@@ -124,7 +127,7 @@ function AuthForms() {
                 className="input-field"
               />
               <button
-                onClick={handleSubmit}
+                type="submit"
                 disabled={isSubmitting}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-60"
               >
@@ -137,7 +140,7 @@ function AuthForms() {
                 )}
                 {mode === 'login' ? 'Sign In' : 'Create Account'}
               </button>
-            </div>
+            </form>
           </>
         )}
       </div>
