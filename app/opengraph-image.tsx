@@ -1,12 +1,16 @@
-import { ImageResponse } from 'next/og'
+import { ImageResponse } from 'next/og';
 
-export const runtime = 'edge'
-export const alt = "Collector's Vaults — Track. Collect. Connect."
+export const runtime = 'edge';
+
+export const alt =
+  "Collector's Vaults — Track your collection. Discover rare finds. Connect with collectors.";
+
 export const size = {
   width: 1200,
   height: 630,
-}
-export const contentType = 'image/png'
+};
+
+export const contentType = 'image/png';
 
 export default function OpenGraphImage() {
   return new ImageResponse(
@@ -14,7 +18,8 @@ export default function OpenGraphImage() {
       <div
         style={{
           alignItems: 'center',
-          background: 'linear-gradient(135deg, #050B16 0%, #0B1626 52%, #111827 100%)',
+          background:
+            'linear-gradient(135deg, #050B16 0%, #0B1626 52%, #111827 100%)',
           color: '#F4F1E8',
           display: 'flex',
           height: '100%',
@@ -37,6 +42,7 @@ export default function OpenGraphImage() {
             width: 540,
           }}
         />
+
         <div
           style={{
             background: '#F59E0B',
@@ -48,7 +54,15 @@ export default function OpenGraphImage() {
             width: 4,
           }}
         />
-        <div style={{ alignItems: 'center', display: 'flex', gap: 62, position: 'relative' }}>
+
+        <div
+          style={{
+            alignItems: 'center',
+            display: 'flex',
+            gap: 62,
+            position: 'relative',
+          }}
+        >
           <div
             style={{
               alignItems: 'center',
@@ -67,25 +81,71 @@ export default function OpenGraphImage() {
               alt="Collector's Vaults emblem"
               height="320"
               src="https://collectorsvaults.org/collectors.vaults.logo.png"
-              style={{ objectFit: 'cover' }}
+              style={{
+                objectFit: 'cover',
+              }}
               width="320"
             />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 610 }}>
-            <div style={{ color: '#F59E0B', display: 'flex', fontSize: 27, fontWeight: 700, letterSpacing: 7, marginBottom: 18 }}>
+
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              maxWidth: 610,
+            }}
+          >
+            <div
+              style={{
+                color: '#F59E0B',
+                display: 'flex',
+                fontSize: 27,
+                fontWeight: 700,
+                letterSpacing: 7,
+                marginBottom: 18,
+              }}
+            >
               PREMIUM DIECAST COLLECTING
             </div>
-            <div style={{ display: 'flex', fontSize: 76, fontWeight: 800, letterSpacing: -2, lineHeight: 1.04 }}>
+
+            <div
+              style={{
+                display: 'flex',
+                fontSize: 76,
+                fontWeight: 800,
+                letterSpacing: -2,
+                lineHeight: 1.04,
+              }}
+            >
               Collector&apos;s Vaults
             </div>
-            <div style={{ color: '#A8B6C8', display: 'flex', fontSize: 31, lineHeight: 1.35, marginTop: 28 }}>
-              Track your collection. Discover rare finds. Connect with collectors.
+
+            <div
+              style={{
+                color: '#A8B6C8',
+                display: 'flex',
+                fontSize: 31,
+                lineHeight: 1.35,
+                marginTop: 28,
+              }}
+            >
+              Track your collection. Discover rare finds. Connect with
+              collectors.
             </div>
-            <div style={{ background: '#F59E0B', display: 'flex', height: 5, marginTop: 38, width: 210 }} />
+
+            <div
+              style={{
+                background: '#F59E0B',
+                display: 'flex',
+                height: 5,
+                marginTop: 38,
+                width: 210,
+              }}
+            />
           </div>
         </div>
       </div>
     ),
     size,
-  )
+  );
 }
