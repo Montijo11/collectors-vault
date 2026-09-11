@@ -68,6 +68,13 @@ type ScanResult = {
 
 type PhotoMode = 'packaged' | 'loose';
 
+type ContributePrompt = {
+  releaseId: string;
+  castingName: string;
+  photo: File;
+  photoMode: PhotoMode;
+};
+
 const RARITY = [
   'Mainline',
   'Premium',
@@ -80,6 +87,8 @@ const RARITY = [
 ];
 
 const CONDITIONS = ['Mint', 'Loose', 'Creased', 'Bent Card', 'Opened'];
+
+const CATALOG_BUCKET = 'catalog-photos';
 
 function rarityColor(rarity: string | null) {
   if (rarity === 'Super Treasure Hunt') {
@@ -147,6 +156,10 @@ export default function GarageHUD() {
   const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+
+  const [contributePrompt, setContributePrompt] =
+    useState<ContributePrompt | null>(null);
+  const [contributing, setContributing] = useState(false);
 
   async function loadItems() {
     if (!session?.user.id) return;
@@ -313,6 +326,91 @@ export default function GarageHUD() {
     }
   }
 
+  async function checkForContributionOpportunity(castingName: string) {
+    if (!selectedPhotos.length) return;
+
+    const { data: castingMatch } = await supabase
+      .from('catalog_castings')
+      .select('id')
+      .ilike('casting_name', castingName.trim())
+      .maybeSingle();
+
+    if (!castingMatch) return;
+
+    const { data: releaseMatch } = await supabase
+      .from('catalog_releases')
+      .select('id')
+      .eq('catalog_casting_id', castingMatch.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (!releaseMatch) return;
+
+    const { count } = await supabase
+      .from('catalog_images')
+      .select('id', { count: 'exact', head: true })
+      .eq('catalog_release_id', releaseMatch.id);
+
+    if (count && count > 0) return;
+
+    setContributePrompt({
+      releaseId: releaseMatch.id,
+      castingName: castingName.trim(),
+      photo: selectedPhotos[0],
+      photoMode,
+    });
+  }
+
+  async function confirmContribution() {
+    if (!contributePrompt || contributing) return;
+
+    setContributing(true);
+    setErrorMsg('');
+
+    const { releaseId, photo, photoMode: mode } = contributePrompt;
+    const safeName = photo.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const path = `${releaseId}/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(CATALOG_BUCKET)
+      .upload(path, photo, { cacheControl: '3600', upsert: false });
+
+    if (uploadError) {
+      setErrorMsg(uploadError.message);
+      setContributing(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(CATALOG_BUCKET)
+      .getPublicUrl(path);
+
+    const contributorLabel = session?.user.email
+      ? `Contributed by ${session.user.email}`
+      : 'Contributed by a Vault collector';
+
+    const { error: insertError } = await supabase.from('catalog_images').insert({
+      catalog_release_id: releaseId,
+      image_url: publicUrlData.publicUrl,
+      image_type: mode === 'packaged' ? 'package_front' : 'loose_front',
+      caption: contributorLabel,
+      is_primary: true,
+    });
+
+    setContributing(false);
+
+    if (insertError) {
+      setErrorMsg(insertError.message);
+      return;
+    }
+
+    setContributePrompt(null);
+  }
+
+  function dismissContribution() {
+    setContributePrompt(null);
+  }
+
   async function save() {
     if (!session?.user.id || !name.trim() || saving) return;
 
@@ -338,6 +436,9 @@ export default function GarageHUD() {
       setErrorMsg(error.message);
       return;
     }
+
+    const savedName = name.trim();
+    void checkForContributionOpportunity(savedName);
 
     resetForm();
     clearPhotos();
@@ -365,6 +466,34 @@ export default function GarageHUD() {
 
   return (
     <section className="mx-auto max-w-6xl">
+      {contributePrompt && (
+        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Upload className="h-5 w-5 shrink-0 text-sky-300" />
+            <p className="text-sm text-sky-100">
+              No catalog photo yet for <span className="font-semibold">{contributePrompt.castingName}</span> — share yours publicly with other collectors?
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              onClick={() => void confirmContribution()}
+              disabled={contributing}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {contributing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {contributing ? 'Sharing...' : 'Share photo'}
+            </button>
+            <button
+              onClick={dismissContribution}
+              disabled={contributing}
+              className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:border-sky-400"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">
