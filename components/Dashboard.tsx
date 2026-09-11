@@ -41,7 +41,7 @@ function DashboardShell() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setMobileNavOpen((value) => !value)}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 sm:hidden"
@@ -49,8 +49,12 @@ function DashboardShell() {
           >
             {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <div className="rounded-xl bg-amber-500/10 p-2"><Car className="h-5 w-5 text-amber-400" /></div>
-          <span className="text-sm font-bold tracking-wide sm:text-base">Collector&apos;s Vault</span>
+          <img
+            src="/collectors.vaults.logo.png"
+            alt="Collector's Vaults"
+            className="h-10 w-10 shrink-0 rounded-xl object-cover object-center ring-1 ring-amber-500/40 shadow-[0_0_18px_rgba(245,158,11,0.18)]"
+          />
+          <span className="text-sm font-bold tracking-wide sm:text-base">Collector&apos;s Vaults</span>
         </div>
 
         <div className="flex items-center gap-3">
