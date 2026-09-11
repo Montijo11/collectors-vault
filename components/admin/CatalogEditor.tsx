@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Car,
   CirclePlus,
+  ImageOff,
   ImagePlus,
   Loader2,
   ScanLine,
@@ -52,10 +53,12 @@ export default function CatalogEditor() {
   const [seriesList, setSeriesList] = useState<CatalogSeries[]>([]);
   const [releases, setReleases] = useState<CatalogRelease[]>([]);
   const [images, setImages] = useState<Record<string, CatalogImage[]>>({});
+  const [releasesWithPhotos, setReleasesWithPhotos] = useState<Set<string>>(new Set());
 
   const [selectedYearId, setSelectedYearId] = useState('');
   const [selectedSeriesId, setSelectedSeriesId] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [missingPhotosOnly, setMissingPhotosOnly] = useState(false);
   const [search, setSearch] = useState('');
 
   const [loadingList, setLoadingList] = useState(true);
@@ -101,6 +104,16 @@ export default function CatalogEditor() {
     setFormSeriesId(mainline?.id ?? list[0]?.id ?? '');
   }
 
+  async function loadPhotoCoverage(releaseIds: string[]) {
+    if (!releaseIds.length) { setReleasesWithPhotos(new Set()); return; }
+    const { data, error } = await supabase
+      .from('catalog_images')
+      .select('catalog_release_id')
+      .in('catalog_release_id', releaseIds);
+    if (error) { setErrorMsg(error.message); return; }
+    setReleasesWithPhotos(new Set((data ?? []).map((row) => row.catalog_release_id as string)));
+  }
+
   async function loadReleases(yearId: string) {
     if (!yearId) { setReleases([]); setLoadingList(false); return; }
     setLoadingList(true);
@@ -110,8 +123,10 @@ export default function CatalogEditor() {
       .eq('catalog_year_id', yearId)
       .order('collector_number', { ascending: true });
     if (error) { setErrorMsg(error.message); setLoadingList(false); return; }
-    setReleases((data ?? []) as unknown as CatalogRelease[]);
+    const list = (data ?? []) as unknown as CatalogRelease[];
+    setReleases(list);
     setLoadingList(false);
+    void loadPhotoCoverage(list.map((item) => item.id));
   }
 
   async function loadImages(releaseId: string) {
@@ -129,10 +144,16 @@ export default function CatalogEditor() {
         // Reserved for future series-level filtering.
       }
       if (statusFilter !== 'all' && release.release_status !== statusFilter) return false;
+      if (missingPhotosOnly && releasesWithPhotos.has(release.id)) return false;
       const haystack = `${release.catalog_castings?.casting_name ?? ''} ${release.collector_number ?? ''} ${release.toy_number ?? ''} ${release.theme_series ?? ''} ${release.rarity}`.toLowerCase();
       return haystack.includes(search.toLowerCase());
     });
-  }, [releases, statusFilter, search, selectedSeriesId]);
+  }, [releases, statusFilter, search, selectedSeriesId, missingPhotosOnly, releasesWithPhotos]);
+
+  const missingPhotoCount = useMemo(
+    () => releases.filter((release) => !releasesWithPhotos.has(release.id)).length,
+    [releases, releasesWithPhotos],
+  );
 
   function resetForm() {
     setCastingName(''); setCollectorNumber(''); setToyNumber(''); setThemeSeries('');
@@ -219,6 +240,7 @@ export default function CatalogEditor() {
 
     if (error) { setErrorMsg(error.message); return; }
     setImageUrl(''); setImageCaption(''); setImageIsPrimary(false);
+    setReleasesWithPhotos((current) => new Set(current).add(releaseId));
     void loadImages(releaseId);
   }
 
@@ -268,7 +290,20 @@ export default function CatalogEditor() {
   async function deleteImage(releaseId: string, imageId: string) {
     setImages((current) => ({ ...current, [releaseId]: (current[releaseId] ?? []).filter((img) => img.id !== imageId) }));
     const { error } = await supabase.from('catalog_images').delete().eq('id', imageId);
-    if (error) { setErrorMsg(error.message); void loadImages(releaseId); }
+    if (error) { setErrorMsg(error.message); void loadImages(releaseId); return; }
+
+    const { count } = await supabase
+      .from('catalog_images')
+      .select('id', { count: 'exact', head: true })
+      .eq('catalog_release_id', releaseId);
+
+    if (!count) {
+      setReleasesWithPhotos((current) => {
+        const next = new Set(current);
+        next.delete(releaseId);
+        return next;
+      });
+    }
   }
 
   async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -339,8 +374,18 @@ export default function CatalogEditor() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
         <div className="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2"><Car className="h-4 w-4 text-amber-400" /><h2 className="font-semibold text-slate-100">Catalog releases</h2></div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <div className="flex items-center gap-2"><Car className="h-4 w-4 text-amber-400" /><h2 className="font-semibold text-slate-100">Catalog releases</h2>
+            {missingPhotoCount > 0 && (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                <ImageOff className="h-3 w-3" />{missingPhotoCount} missing photos
+              </span>
+            )}
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-300">
+              <input type="checkbox" checked={missingPhotosOnly} onChange={(e) => setMissingPhotosOnly(e.target.checked)} />
+              Missing photos only
+            </label>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field w-full sm:w-40">
               <option value="all">All statuses</option>
               {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option.replace('_', ' ')}</option>)}
@@ -369,6 +414,11 @@ export default function CatalogEditor() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {!releasesWithPhotos.has(release.id) && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
+                      <ImageOff className="h-3 w-3" />Photo needed
+                    </span>
+                  )}
                   {release.rarity !== 'Mainline' && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2.5 py-1 text-xs font-semibold text-fuchsia-300">
                       <Star className="h-3 w-3" />{release.rarity}
@@ -400,7 +450,12 @@ export default function CatalogEditor() {
                         </div>
                       </div>
                     ))}
-                    {(images[release.id] ?? []).length === 0 && <p className="text-xs text-slate-500">No images yet.</p>}
+                    {(images[release.id] ?? []).length === 0 && (
+                      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 py-6 text-slate-500 sm:col-span-2 lg:col-span-4">
+                        <ImageOff className="h-5 w-5" />
+                        <p className="text-xs">No images yet — upload one or wait for a collector to contribute.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
