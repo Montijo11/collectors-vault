@@ -10,6 +10,7 @@ import {
   Search,
   Star,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -34,6 +35,7 @@ type CatalogRelease = {
 const RARITY_OPTIONS = ['Mainline', 'Premium', 'Silver Series', 'Treasure Hunt', 'Super Treasure Hunt', 'RLC', 'Convention Exclusive', 'Other'];
 const STATUS_OPTIONS = ['confirmed', 'needs_review', 'draft'];
 const IMAGE_TYPES = ['package_front', 'package_back', 'loose_front', 'loose_side', 'loose_rear', 'base', 'detail'];
+const CATALOG_BUCKET = 'catalog-photos';
 
 function statusColor(status: string) {
   if (status === 'confirmed') return 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300';
@@ -44,6 +46,7 @@ function statusColor(status: string) {
 export default function CatalogEditor() {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageUploadInputRef = useRef<HTMLInputElement>(null);
 
   const [years, setYears] = useState<CatalogYear[]>([]);
   const [seriesList, setSeriesList] = useState<CatalogSeries[]>([]);
@@ -78,6 +81,7 @@ export default function CatalogEditor() {
   const [imageCaption, setImageCaption] = useState('');
   const [imageIsPrimary, setImageIsPrimary] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   async function loadYears() {
     const { data, error } = await supabase.from('catalog_years').select('id, year, display_name').order('year', { ascending: false });
@@ -122,7 +126,7 @@ export default function CatalogEditor() {
   const filteredReleases = useMemo(() => {
     return releases.filter((release) => {
       if (selectedSeriesId !== 'all') {
-        // theme_series filter uses formSeriesId not applicable here; keep series filter as collection type via themeSeries text match on slug name
+        // Reserved for future series-level filtering.
       }
       if (statusFilter !== 'all' && release.release_status !== statusFilter) return false;
       const haystack = `${release.catalog_castings?.casting_name ?? ''} ${release.collector_number ?? ''} ${release.toy_number ?? ''} ${release.theme_series ?? ''} ${release.rarity}`.toLowerCase();
@@ -200,26 +204,65 @@ export default function CatalogEditor() {
     if (!images[releaseId]) void loadImages(releaseId);
   }
 
-  async function addImage(releaseId: string) {
-    if (!imageUrl.trim() || savingImage) return;
-    setSavingImage(true); setErrorMsg('');
-
+  async function insertImageRecord(releaseId: string, url: string) {
     if (imageIsPrimary) {
       await supabase.from('catalog_images').update({ is_primary: false }).eq('catalog_release_id', releaseId);
     }
 
     const { error } = await supabase.from('catalog_images').insert({
       catalog_release_id: releaseId,
-      image_url: imageUrl.trim(),
+      image_url: url,
       image_type: imageType,
       caption: imageCaption.trim() || null,
       is_primary: imageIsPrimary,
     });
 
-    setSavingImage(false);
     if (error) { setErrorMsg(error.message); return; }
     setImageUrl(''); setImageCaption(''); setImageIsPrimary(false);
     void loadImages(releaseId);
+  }
+
+  async function addImageByUrl(releaseId: string) {
+    if (!imageUrl.trim() || savingImage) return;
+    setSavingImage(true); setErrorMsg('');
+    await insertImageRecord(releaseId, imageUrl.trim());
+    setSavingImage(false);
+  }
+
+  async function uploadImageFile(releaseId: string, file: File) {
+    if (uploadingImage) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Only image files can be uploaded.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMsg('Images must be 10 MB or smaller.');
+      return;
+    }
+
+    setUploadingImage(true); setErrorMsg('');
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const path = `${releaseId}/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(CATALOG_BUCKET)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+
+    if (uploadError) {
+      setErrorMsg(uploadError.message);
+      setUploadingImage(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(CATALOG_BUCKET).getPublicUrl(path);
+
+    await insertImageRecord(releaseId, publicUrlData.publicUrl);
+    setUploadingImage(false);
+
+    if (imageUploadInputRef.current) imageUploadInputRef.current.value = '';
   }
 
   async function deleteImage(releaseId: string, imageId: string) {
@@ -361,22 +404,43 @@ export default function CatalogEditor() {
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="input-field lg:col-span-2" placeholder="Image URL" />
                     <select value={imageType} onChange={(e) => setImageType(e.target.value)} className="input-field">
                       {IMAGE_TYPES.map((type) => <option key={type} value={type}>{type.replace('_', ' ')}</option>)}
                     </select>
                     <input value={imageCaption} onChange={(e) => setImageCaption(e.target.value)} className="input-field" placeholder="Caption (optional)" />
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between">
                     <label className="flex items-center gap-2 text-xs text-slate-400">
                       <input type="checkbox" checked={imageIsPrimary} onChange={(e) => setImageIsPrimary(e.target.checked)} />
-                      Set as primary image
+                      Set as primary
                     </label>
-                    <button onClick={() => void addImage(release.id)} disabled={savingImage || !imageUrl.trim()} className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">
-                      {savingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-                      Add image
-                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      ref={imageUploadInputRef}
+                      id={`catalog-image-upload-${release.id}`}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadImageFile(release.id, file);
+                      }}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor={`catalog-image-upload-${release.id}`}
+                      className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 ${uploadingImage ? 'pointer-events-none opacity-60' : ''}`}
+                    >
+                      {uploadingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                      {uploadingImage ? 'Uploading...' : 'Upload photo'}
+                    </label>
+
+                    <div className="flex flex-1 items-center gap-2">
+                      <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="input-field flex-1" placeholder="...or paste an image URL" />
+                      <button onClick={() => void addImageByUrl(release.id)} disabled={savingImage || !imageUrl.trim()} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60">
+                        {savingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                        Add URL
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
