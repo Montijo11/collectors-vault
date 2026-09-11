@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { BookOpen, Car, ImageUp, LogOut, Menu, MessageCircle, ShieldAlert, X } from 'lucide-react';
+import {
+  BookOpen,
+  Car,
+  ImageUp,
+  LogOut,
+  Menu,
+  MessageCircle,
+  ShieldAlert,
+  X,
+} from 'lucide-react';
 import AuthGate from './auth/AuthGate';
 import AboutVault from './AboutVault';
 import GarageHUD from './garage/GarageHUD';
@@ -27,10 +36,28 @@ function DashboardShell() {
 
   const navItems: { id: Tab; label: string; icon: ReactNode; adminOnly?: boolean }[] = [
     { id: 'garage', label: 'My Vault', icon: <Car className="h-4 w-4" /> },
-    { id: 'community', label: 'Collector Exchange', icon: <MessageCircle className="h-4 w-4" /> },
-    { id: 'about', label: 'Getting Started', icon: <BookOpen className="h-4 w-4" /> },
-    { id: 'catalog', label: 'Catalog Manager', icon: <ImageUp className="h-4 w-4" />, adminOnly: true },
-    { id: 'admin', label: 'Vault Command', icon: <ShieldAlert className="h-4 w-4" />, adminOnly: true },
+    {
+      id: 'community',
+      label: 'Collector Exchange',
+      icon: <MessageCircle className="h-4 w-4" />,
+    },
+    {
+      id: 'about',
+      label: 'Getting Started',
+      icon: <BookOpen className="h-4 w-4" />,
+    },
+    {
+      id: 'catalog',
+      label: 'Catalog Manager',
+      icon: <ImageUp className="h-4 w-4" />,
+      adminOnly: true,
+    },
+    {
+      id: 'admin',
+      label: 'Vault Command',
+      icon: <ShieldAlert className="h-4 w-4" />,
+      adminOnly: true,
+    },
   ];
 
   function selectTab(tab: Tab) {
@@ -41,27 +68,45 @@ function DashboardShell() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <button
             onClick={() => setMobileNavOpen((value) => !value)}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 sm:hidden"
             aria-label="Toggle navigation"
           >
-            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileNavOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
           </button>
+
           <img
             src="/collectors.vaults.logo.png"
             alt="Collector's Vaults"
             className="h-10 w-10 shrink-0 rounded-xl object-cover object-center ring-1 ring-amber-500/40 shadow-[0_0_18px_rgba(245,158,11,0.18)]"
           />
-          <span className="text-sm font-bold tracking-wide sm:text-base">Collector&apos;s Vaults</span>
+
+          <div className="min-w-0">
+            <span className="block truncate text-sm font-bold tracking-wide text-slate-100 sm:text-base">
+              Collector&apos;s Vaults
+            </span>
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-400/90 sm:block">
+              Premium Diecast Collecting
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block">
-            <p className="text-sm font-medium text-slate-200">{profile?.username}</p>
-            <p className="text-xs text-slate-500">{isAdmin ? 'Vault Administrator' : 'Collector'}</p>
+            <p className="text-sm font-medium text-slate-200">
+              {profile?.username}
+            </p>
+            <p className="text-xs text-slate-500">
+              {isAdmin ? 'Vault Administrator' : 'Collector'}
+            </p>
           </div>
+
           <button
             onClick={() => void signOut()}
             className="flex items-center gap-1.5 rounded-lg border border-slate-800 px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-red-900/50 hover:text-red-400"
@@ -81,14 +126,22 @@ function DashboardShell() {
           />
         )}
 
-        <nav className={`${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'} fixed bottom-0 left-0 top-[57px] z-20 w-64 border-r border-slate-800 bg-slate-950 p-3 transition-transform sm:sticky sm:top-[57px] sm:min-h-[calc(100vh-57px)] sm:translate-x-0`}>
+        <nav
+          className={`${
+            mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+          } fixed bottom-0 left-0 top-[57px] z-20 w-64 border-r border-slate-800 bg-slate-950 p-3 transition-transform sm:sticky sm:top-[57px] sm:min-h-[calc(100vh-57px)] sm:translate-x-0`}
+        >
           {navItems
             .filter((item) => !item.adminOnly || isAdmin)
             .map((item) => (
               <button
                 key={item.id}
                 onClick={() => selectTab(item.id)}
-                className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeTab === item.id ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
+                className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                  activeTab === item.id
+                    ? 'bg-amber-500/10 text-amber-400'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                }`}
               >
                 {item.icon}
                 {item.label}
