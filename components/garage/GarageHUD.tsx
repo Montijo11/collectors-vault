@@ -9,13 +9,19 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  Calendar,
   Car,
   CirclePlus,
+  Hash,
+  ImageOff,
   ImagePlus,
+  Layers,
   Loader2,
+  Package,
   ScanLine,
   Search,
   Star,
+  Tag,
   Trash2,
   Upload,
   Vault,
@@ -35,12 +41,10 @@ type GarageItem = {
   rarity: string | null;
   estimated_value: number | null;
   notes: string | null;
+  photo_url: string | null;
 };
 
-type ScanStatus =
-  | 'high_confidence'
-  | 'possible_match'
-  | 'needs_more_photos';
+type ScanStatus = 'high_confidence' | 'possible_match' | 'needs_more_photos';
 
 type ScanAlternative = {
   name: string;
@@ -89,20 +93,18 @@ const RARITY = [
 const CONDITIONS = ['Mint', 'Loose', 'Creased', 'Bent Card', 'Opened'];
 
 const CATALOG_BUCKET = 'catalog-photos';
+const VAULT_BUCKET = 'vault-photos';
 
 function rarityColor(rarity: string | null) {
   if (rarity === 'Super Treasure Hunt') {
     return 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300';
   }
-
   if (rarity === 'Premium') {
     return 'border-sky-500/40 bg-sky-500/10 text-sky-300';
   }
-
   if (rarity === 'Silver Series') {
     return 'border-slate-500/50 bg-slate-400/10 text-slate-300';
   }
-
   return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
 }
 
@@ -110,18 +112,15 @@ function confidenceStyle(status: ScanStatus) {
   if (status === 'high_confidence') {
     return {
       label: 'High confidence',
-      className:
-        'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
+      className: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
     };
   }
-
   if (status === 'possible_match') {
     return {
       label: 'Possible match',
       className: 'border-amber-500/35 bg-amber-500/10 text-amber-300',
     };
   }
-
   return {
     label: 'Needs more photos',
     className: 'border-red-500/35 bg-red-500/10 text-red-300',
@@ -142,6 +141,7 @@ export default function GarageHUD() {
 
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<GarageItem | null>(null);
 
   const [name, setName] = useState('');
   const [series, setSeries] = useState('');
@@ -157,13 +157,11 @@ export default function GarageHUD() {
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
-  const [contributePrompt, setContributePrompt] =
-    useState<ContributePrompt | null>(null);
+  const [contributePrompt, setContributePrompt] = useState<ContributePrompt | null>(null);
   const [contributing, setContributing] = useState(false);
 
   async function loadItems() {
     if (!session?.user.id) return;
-
     setLoading(true);
 
     const { data, error } = await supabase
@@ -201,14 +199,8 @@ export default function GarageHUD() {
     [items, search],
   );
 
-  const total = items.reduce(
-    (sum, item) => sum + (item.estimated_value ?? 0),
-    0,
-  );
-
-  const rare = items.filter(
-    (item) => item.rarity && item.rarity !== 'Mainline',
-  ).length;
+  const total = items.reduce((sum, item) => sum + (item.estimated_value ?? 0), 0);
+  const rare = items.filter((item) => item.rarity && item.rarity !== 'Mainline').length;
 
   function resetForm() {
     setName('');
@@ -226,27 +218,17 @@ export default function GarageHUD() {
     photoPreviews.forEach((preview) => URL.revokeObjectURL(preview));
     setSelectedPhotos([]);
     setPhotoPreviews([]);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function removePhoto(index: number) {
     URL.revokeObjectURL(photoPreviews[index]);
-
-    setSelectedPhotos((current) =>
-      current.filter((_, photoIndex) => photoIndex !== index),
-    );
-
-    setPhotoPreviews((current) =>
-      current.filter((_, photoIndex) => photoIndex !== index),
-    );
+    setSelectedPhotos((current) => current.filter((_, i) => i !== index));
+    setPhotoPreviews((current) => current.filter((_, i) => i !== index));
   }
 
   function selectPhotos(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
-
     if (!files.length) return;
 
     const invalidFile = files.find(
@@ -260,9 +242,7 @@ export default function GarageHUD() {
     }
 
     const combined = [...selectedPhotos, ...files].slice(0, 3);
-
     photoPreviews.forEach((preview) => URL.revokeObjectURL(preview));
-
     setSelectedPhotos(combined);
     setPhotoPreviews(combined.map((file) => URL.createObjectURL(file)));
     setErrorMsg('');
@@ -274,10 +254,7 @@ export default function GarageHUD() {
     if (result.series) setSeries(result.series);
     if (result.year) setYear(String(result.year));
     if (result.toy_number) setToyNumber(result.toy_number);
-
-    if (result.rarity && RARITY.includes(result.rarity)) {
-      setRarity(result.rarity);
-    }
+    if (result.rarity && RARITY.includes(result.rarity)) setRarity(result.rarity);
   }
 
   async function analyzePhotos() {
@@ -292,24 +269,14 @@ export default function GarageHUD() {
 
     try {
       const formData = new FormData();
-
-      selectedPhotos.forEach((photo) => {
-        formData.append('images', photo);
-      });
-
+      selectedPhotos.forEach((photo) => formData.append('images', photo));
       formData.append('photo_mode', photoMode);
 
-      const response = await fetch('/api/identify-car', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await fetch('/api/identify-car', { method: 'POST', body: formData });
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || 'Could not identify the car from these photos.',
-        );
+        throw new Error(data.error || 'Could not identify the car from these photos.');
       }
 
       setScanResult(data as ScanResult);
@@ -381,9 +348,7 @@ export default function GarageHUD() {
       return;
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from(CATALOG_BUCKET)
-      .getPublicUrl(path);
+    const { data: publicUrlData } = supabase.storage.from(CATALOG_BUCKET).getPublicUrl(path);
 
     const contributorLabel = session?.user.email
       ? `Contributed by ${session.user.email}`
@@ -417,6 +382,27 @@ export default function GarageHUD() {
     setSaving(true);
     setErrorMsg('');
 
+    let photoUrl: string | null = null;
+
+    if (selectedPhotos.length) {
+      const photo = selectedPhotos[0];
+      const safeName = photo.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const path = `${session.user.id}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(VAULT_BUCKET)
+        .upload(path, photo, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        setErrorMsg(uploadError.message);
+        setSaving(false);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage.from(VAULT_BUCKET).getPublicUrl(path);
+      photoUrl = publicUrlData.publicUrl;
+    }
+
     const { error } = await supabase.from('registry_items').insert({
       owner_id: session.user.id,
       casting_name: name.trim(),
@@ -427,6 +413,7 @@ export default function GarageHUD() {
       condition,
       estimated_value: Number(value) || 0,
       notes: notes.trim() || null,
+      photo_url: photoUrl,
       is_private: false,
     });
 
@@ -448,11 +435,9 @@ export default function GarageHUD() {
 
   async function remove(id: string) {
     setItems((current) => current.filter((item) => item.id !== id));
+    setSelectedItem(null);
 
-    const { error } = await supabase
-      .from('registry_items')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('registry_items').delete().eq('id', id);
 
     if (error) {
       setErrorMsg(error.message);
@@ -460,9 +445,7 @@ export default function GarageHUD() {
     }
   }
 
-  const scanStatus = scanResult
-    ? confidenceStyle(scanResult.status)
-    : null;
+  const scanStatus = scanResult ? confidenceStyle(scanResult.status) : null;
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -471,7 +454,9 @@ export default function GarageHUD() {
           <div className="flex items-center gap-3">
             <Upload className="h-5 w-5 shrink-0 text-sky-300" />
             <p className="text-sm text-sky-100">
-              No catalog photo yet for <span className="font-semibold">{contributePrompt.castingName}</span> — share yours publicly with other collectors?
+              No catalog photo yet for{' '}
+              <span className="font-semibold">{contributePrompt.castingName}</span> — share
+              yours publicly with other collectors?
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -480,7 +465,11 @@ export default function GarageHUD() {
               disabled={contributing}
               className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {contributing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {contributing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
               {contributing ? 'Sharing...' : 'Share photo'}
             </button>
             <button
@@ -521,24 +510,9 @@ export default function GarageHUD() {
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        <Stat
-          icon={<Car className="h-5 w-5" />}
-          label="Castings logged"
-          value={String(items.length)}
-          accent="amber"
-        />
-        <Stat
-          icon={<Star className="h-5 w-5" />}
-          label="Rare & premium"
-          value={String(rare)}
-          accent="sky"
-        />
-        <Stat
-          icon={<Vault className="h-5 w-5" />}
-          label="Estimated vault value"
-          value={`$${total.toFixed(2)}`}
-          accent="emerald"
-        />
+        <Stat icon={<Car className="h-5 w-5" />} label="Castings logged" value={String(items.length)} accent="amber" />
+        <Stat icon={<Star className="h-5 w-5" />} label="Rare & premium" value={String(rare)} accent="sky" />
+        <Stat icon={<Vault className="h-5 w-5" />} label="Estimated vault value" value={`$${total.toFixed(2)}`} accent="emerald" />
       </div>
 
       <div className="mb-6 overflow-hidden rounded-2xl border border-amber-500/25 bg-slate-900/80">
@@ -547,16 +521,13 @@ export default function GarageHUD() {
             <div>
               <div className="flex items-center gap-2">
                 <ScanLine className="h-5 w-5 text-amber-400" />
-                <h2 className="font-semibold text-slate-100">
-                  Identify a car with AI
-                </h2>
+                <h2 className="font-semibold text-slate-100">Identify a car with AI</h2>
               </div>
               <p className="mt-1 text-sm leading-6 text-slate-400">
-                Use clear photos. AI suggests a match, but you confirm before
-                the casting enters your vault.
+                Use clear photos. AI suggests a match, but you confirm before the casting
+                enters your vault.
               </p>
             </div>
-
             <span className="w-fit rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
               Up to 3 photos
             </span>
@@ -574,8 +545,7 @@ export default function GarageHUD() {
             >
               <p className="font-semibold text-slate-100">Carded / packaged</p>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                Add the full card front, collector number, and optional package
-                detail.
+                Add the full card front, collector number, and optional package detail.
               </p>
             </button>
 
@@ -590,8 +560,8 @@ export default function GarageHUD() {
             >
               <p className="font-semibold text-slate-100">Loose car</p>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                Add a three-quarter view, underside/base photo, and optional
-                wheel or graphics close-up.
+                Add a three-quarter view, underside/base photo, and optional wheel or
+                graphics close-up.
               </p>
             </button>
           </div>
@@ -627,15 +597,8 @@ export default function GarageHUD() {
           {photoPreviews.length > 0 && (
             <div className="mt-4 grid grid-cols-3 gap-3">
               {photoPreviews.map((preview, index) => (
-                <div
-                  key={preview}
-                  className="group relative overflow-hidden rounded-xl border border-slate-700 bg-slate-950"
-                >
-                  <img
-                    src={preview}
-                    alt={`Selected scan photo ${index + 1}`}
-                    className="aspect-square h-full w-full object-cover"
-                  />
+                <div key={preview} className="group relative overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+                  <img src={preview} alt={`Selected scan photo ${index + 1}`} className="aspect-square h-full w-full object-cover" />
                   <button
                     type="button"
                     onClick={() => removePhoto(index)}
@@ -698,28 +661,20 @@ export default function GarageHUD() {
                     {scanResult.name || 'No confident casting match'}
                   </h3>
                   <p className="mt-1 text-sm text-slate-400">
-                    {[scanResult.series, scanResult.year]
-                      .filter(Boolean)
-                      .join(' · ') || 'Review the result before saving'}
+                    {[scanResult.series, scanResult.year].filter(Boolean).join(' · ') ||
+                      'Review the result before saving'}
                   </p>
                 </div>
-
-                <span
-                  className={`w-fit rounded-full border px-3 py-1.5 text-xs font-bold ${scanStatus.className}`}
-                >
+                <span className={`w-fit rounded-full border px-3 py-1.5 text-xs font-bold ${scanStatus.className}`}>
                   {scanStatus.label} · {scanResult.confidence}%
                 </span>
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-slate-300">
-                {scanResult.reason}
-              </p>
+              <p className="mt-4 text-sm leading-6 text-slate-300">{scanResult.reason}</p>
 
               {scanResult.photo_quality.issues.length > 0 && (
                 <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
-                    Photo review
-                  </p>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">Photo review</p>
                   <ul className="mt-2 space-y-1 text-sm text-slate-400">
                     {scanResult.photo_quality.issues.map((issue) => (
                       <li key={issue}>• {issue}</li>
@@ -729,20 +684,13 @@ export default function GarageHUD() {
               )}
 
               <div className="mt-4 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-300">
-                  Recommended next photo
-                </p>
-                <p className="mt-1 text-sm text-slate-300">
-                  {scanResult.recommended_next_photo}
-                </p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-300">Recommended next photo</p>
+                <p className="mt-1 text-sm text-slate-300">{scanResult.recommended_next_photo}</p>
               </div>
 
               {scanResult.alternatives.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                    Other possible matches
-                  </p>
-
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Other possible matches</p>
                   <div className="mt-2 grid gap-2">
                     {scanResult.alternatives.map((alternative, index) => (
                       <button
@@ -751,24 +699,15 @@ export default function GarageHUD() {
                         onClick={() => {
                           setName(alternative.name);
                           setSeries(alternative.series);
-
-                          if (alternative.year) {
-                            setYear(String(alternative.year));
-                          }
+                          if (alternative.year) setYear(String(alternative.year));
                         }}
                         className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-left transition hover:border-amber-500/50 hover:bg-amber-500/5"
                       >
-                        <p className="text-sm font-semibold text-slate-200">
-                          {alternative.name}
-                        </p>
+                        <p className="text-sm font-semibold text-slate-200">{alternative.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {[alternative.series, alternative.year]
-                            .filter(Boolean)
-                            .join(' · ')}
+                          {[alternative.series, alternative.year].filter(Boolean).join(' · ')}
                         </p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {alternative.reason}
-                        </p>
+                        <p className="mt-1 text-xs text-slate-400">{alternative.reason}</p>
                       </button>
                     ))}
                   </div>
@@ -791,62 +730,18 @@ export default function GarageHUD() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="input-field"
-              placeholder="Casting name"
-            />
-            <input
-              value={series}
-              onChange={(event) => setSeries(event.target.value)}
-              className="input-field"
-              placeholder="Series"
-            />
-            <input
-              value={year}
-              onChange={(event) => setYear(event.target.value)}
-              className="input-field"
-              inputMode="numeric"
-              placeholder="Year"
-            />
-            <input
-              value={toyNumber}
-              onChange={(event) => setToyNumber(event.target.value)}
-              className="input-field"
-              placeholder="Toy number / SKU"
-            />
-            <select
-              value={rarity}
-              onChange={(event) => setRarity(event.target.value)}
-              className="input-field"
-            >
-              {RARITY.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
+            <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="Casting name" />
+            <input value={series} onChange={(e) => setSeries(e.target.value)} className="input-field" placeholder="Series" />
+            <input value={year} onChange={(e) => setYear(e.target.value)} className="input-field" inputMode="numeric" placeholder="Year" />
+            <input value={toyNumber} onChange={(e) => setToyNumber(e.target.value)} className="input-field" placeholder="Toy number / SKU" />
+            <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">
+              {RARITY.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <select
-              value={condition}
-              onChange={(event) => setCondition(event.target.value)}
-              className="input-field"
-            >
-              {CONDITIONS.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
+            <select value={condition} onChange={(e) => setCondition(e.target.value)} className="input-field">
+              {CONDITIONS.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <input
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className="input-field"
-              inputMode="decimal"
-              placeholder="Estimated value"
-            />
-            <input
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              className="input-field sm:col-span-2"
-              placeholder="Notes (optional)"
-            />
+            <input value={value} onChange={(e) => setValue(e.target.value)} className="input-field" inputMode="decimal" placeholder="Estimated value" />
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field sm:col-span-2" placeholder="Notes (optional)" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -857,7 +752,6 @@ export default function GarageHUD() {
             >
               {saving ? 'Saving...' : 'Confirm and save casting'}
             </button>
-
             <button
               onClick={() => {
                 setShowAddForm(false);
@@ -874,86 +768,136 @@ export default function GarageHUD() {
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60">
         <div className="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-semibold text-slate-100">Vault inventory</h2>
-
           <label className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 sm:w-72">
             <Search className="h-4 w-4 text-slate-500" />
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-transparent text-sm text-slate-100 outline-none"
               placeholder="Search your collection"
             />
           </label>
         </div>
 
-        <div className="divide-y divide-slate-800">
-          {loading && (
-            <p className="p-8 text-center text-sm text-slate-500">
-              Loading your vault...
-            </p>
-          )}
+        {loading && (
+          <p className="p-8 text-center text-sm text-slate-500">Loading your vault...</p>
+        )}
 
-          {!loading &&
-            filtered.map((item) => (
-              <article
+        {!loading && filtered.length > 0 && (
+          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((item) => (
+              <button
                 key={item.id}
-                className="flex items-center justify-between gap-3 p-4"
+                onClick={() => setSelectedItem(item)}
+                className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-left transition hover:border-amber-500/40 hover:bg-slate-900"
               >
-                <div className="min-w-0">
-                  <h3 className="truncate font-semibold text-slate-200">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                  {item.photo_url ? (
+                    <img src={item.photo_url} alt={item.casting_name} className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageOff className="h-5 w-5 text-slate-700" />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-semibold text-slate-200 group-hover:text-amber-300">
                     {item.casting_name}
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    {item.series} · {item.year} · {item.condition}
+                  <p className="truncate text-xs text-slate-500">
+                    {item.series} · {item.year}
                   </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${rarityColor(item.rarity)}`}>
+                      {item.rarity}
+                    </span>
+                    <span className="text-xs font-semibold text-emerald-300">
+                      ${(item.estimated_value ?? 0).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
-
-                <div className="flex shrink-0 items-center gap-3">
-                  <span
-                    className={`hidden rounded-full border px-2.5 py-1 text-xs font-semibold sm:inline-flex ${rarityColor(
-                      item.rarity,
-                    )}`}
-                  >
-                    {item.rarity}
-                  </span>
-
-                  <span className="text-sm font-semibold text-emerald-300">
-                    ${(item.estimated_value ?? 0).toFixed(2)}
-                  </span>
-
-                  <button
-                    onClick={() => void remove(item.id)}
-                    className="rounded-lg p-2 text-slate-500 transition hover:bg-red-950/40 hover:text-red-400"
-                    aria-label={`Remove ${item.casting_name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </article>
+              </button>
             ))}
+          </div>
+        )}
 
-          {!loading && filtered.length === 0 && (
-            <p className="p-8 text-center text-sm text-slate-500">
-              No castings match that search.
-            </p>
-          )}
-        </div>
+        {!loading && filtered.length === 0 && (
+          <p className="p-8 text-center text-sm text-slate-500">No castings match that search.</p>
+        )}
       </div>
+
+      {selectedItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+          onClick={() => setSelectedItem(null)}
+        >
+          <div
+            className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-amber-500/25 bg-slate-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedItem(null)}
+              className="absolute right-3 top-3 z-10 rounded-lg bg-slate-950/80 p-1.5 text-slate-300 transition hover:bg-red-950 hover:text-red-300"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="aspect-video w-full bg-slate-950">
+              {selectedItem.photo_url ? (
+                <img src={selectedItem.photo_url} alt={selectedItem.casting_name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-700">
+                  <ImageOff className="h-10 w-10" />
+                  <span className="text-xs font-semibold text-slate-500">No photo attached</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-100">{selectedItem.casting_name}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{selectedItem.series}</p>
+                </div>
+                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${rarityColor(selectedItem.rarity)}`}>
+                  <Star className="h-3 w-3" />
+                  {selectedItem.rarity}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <DetailRow icon={<Calendar className="h-4 w-4" />} label="Year" value={String(selectedItem.year ?? '—')} />
+                <DetailRow icon={<Hash className="h-4 w-4" />} label="Toy number" value={selectedItem.toy_number ?? '—'} />
+                <DetailRow icon={<Package className="h-4 w-4" />} label="Condition" value={selectedItem.condition ?? '—'} />
+                <DetailRow icon={<Tag className="h-4 w-4" />} label="Est. value" value={`$${(selectedItem.estimated_value ?? 0).toFixed(2)}`} />
+              </div>
+
+              {selectedItem.notes && (
+                <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                    <Layers className="h-3.5 w-3.5" />
+                    Notes
+                  </p>
+                  <p className="text-sm text-slate-300">{selectedItem.notes}</p>
+                </div>
+              )}
+
+              <button
+                onClick={() => void remove(selectedItem.id)}
+                className="mt-5 inline-flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-950/40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove from vault
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function Stat({
-  icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  accent: 'amber' | 'sky' | 'emerald';
-}) {
+function Stat({ icon, label, value, accent }: { icon: ReactNode; label: string; value: string; accent: 'amber' | 'sky' | 'emerald' }) {
   const colors = {
     amber: 'border-amber-500/20 bg-amber-500/5 text-amber-400',
     sky: 'border-sky-500/20 bg-sky-500/5 text-sky-400',
@@ -962,11 +906,21 @@ function Stat({
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <div className={`mb-3 inline-flex rounded-lg border p-2 ${colors[accent]}`}>
-        {icon}
-      </div>
+      <div className={`mb-3 inline-flex rounded-lg border p-2 ${colors[accent]}`}>{icon}</div>
       <p className="text-2xl font-bold text-slate-100">{value}</p>
       <p className="mt-1 text-xs text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+        {icon}
+        {label}
+      </p>
+      <p className="text-sm font-semibold text-slate-200">{value}</p>
     </div>
   );
 }
