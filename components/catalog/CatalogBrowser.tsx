@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Car, ImageOff, Search, Star } from 'lucide-react';
+import { Car, ExternalLink, ImageOff, Search, Star } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 type CatalogYearOption = { id: string; year: number; display_name: string };
@@ -58,6 +58,12 @@ function rarityColor(rarity: string) {
   }
   return 'border-amber-500/30 bg-amber-500/10 text-amber-300';
 }
+
+function hotWheelsWikiSearchUrl(castingName: string) {
+  return `https://hotwheels.fandom.com/wiki/Special:Search?query=${encodeURIComponent(castingName)}`;
+}
+
+const MATTEL_CREATIONS_URL = 'https://creations.mattel.com/pages/hot-wheels-collectors';
 
 export default function CatalogBrowser() {
   const supabase = createClient();
@@ -208,6 +214,7 @@ export default function CatalogBrowser() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((release) => {
             const photo = primaryPhoto(release.catalog_images);
+            const castingName = release.catalog_castings?.casting_name ?? 'Unknown casting';
 
             return (
               <article
@@ -218,7 +225,7 @@ export default function CatalogBrowser() {
                   {photo ? (
                     <img
                       src={photo.image_url}
-                      alt={release.catalog_castings?.casting_name ?? 'Hot Wheels casting'}
+                      alt={castingName}
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -245,9 +252,7 @@ export default function CatalogBrowser() {
                 </div>
 
                 <div className="p-4">
-                  <p className="truncate text-sm font-semibold text-slate-100">
-                    {release.catalog_castings?.casting_name ?? 'Unknown casting'}
-                  </p>
+                  <p className="truncate text-sm font-semibold text-slate-100">{castingName}</p>
                   <p className="mt-1 text-xs text-slate-500">
                     #{release.collector_number ?? '—'} · {release.catalog_years?.display_name ?? '—'}
                   </p>
@@ -262,6 +267,16 @@ export default function CatalogBrowser() {
                       {release.retailer_exclusive} Exclusive
                     </p>
                   )}
+
+                  <a
+                    href={hotWheelsWikiSearchUrl(castingName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-amber-500/50 hover:text-amber-300"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View Official Gallery
+                  </a>
                 </div>
               </article>
             );
@@ -274,6 +289,30 @@ export default function CatalogBrowser() {
             </div>
           )}
         </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <p className="mt-6 text-center text-xs text-slate-600">
+          Missing a photo above? Every "View Official Gallery" link opens a live search on{' '}
+          <a
+            href="https://hotwheels.fandom.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-400"
+          >
+            Hot Wheels Wiki
+          </a>{' '}
+          or browse{' '}
+          <a
+            href={MATTEL_CREATIONS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-400"
+          >
+            Mattel Creations' official collectors database
+          </a>
+          .
+        </p>
       )}
     </section>
   );
