@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  AlertTriangle,
   Calendar,
   Car,
   CirclePlus,
@@ -77,6 +78,12 @@ type ContributePrompt = {
   castingName: string;
   photo: File;
   photoMode: PhotoMode;
+};
+
+type DuplicateMatch = {
+  id: string;
+  casting_name: string;
+  condition: string | null;
 };
 
 const RARITY = [
@@ -160,6 +167,8 @@ export default function GarageHUD() {
   const [contributePrompt, setContributePrompt] = useState<ContributePrompt | null>(null);
   const [contributing, setContributing] = useState(false);
 
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([]);
+
   async function loadItems() {
     if (!session?.user.id) return;
     setLoading(true);
@@ -212,6 +221,7 @@ export default function GarageHUD() {
     setValue('0');
     setNotes('');
     setScanResult(null);
+    setDuplicateMatches([]);
   }
 
   function clearPhotos() {
@@ -257,6 +267,29 @@ export default function GarageHUD() {
     if (result.rarity && RARITY.includes(result.rarity)) setRarity(result.rarity);
   }
 
+  async function checkForDuplicates(castingName: string, toyNumber: string) {
+    if (!session?.user.id || !castingName.trim()) {
+      setDuplicateMatches([]);
+      return;
+    }
+
+    const orFilters = [`casting_name.ilike.%${castingName.trim()}%`];
+    if (toyNumber.trim()) orFilters.push(`toy_number.eq.${toyNumber.trim()}`);
+
+    const { data, error } = await supabase
+      .from('registry_items')
+      .select('id, casting_name, condition')
+      .eq('owner_id', session.user.id)
+      .or(orFilters.join(','));
+
+    if (error || !data) {
+      setDuplicateMatches([]);
+      return;
+    }
+
+    setDuplicateMatches(data as DuplicateMatch[]);
+  }
+
   async function analyzePhotos() {
     if (!selectedPhotos.length) {
       setErrorMsg('Add at least one clear photo before analyzing.');
@@ -266,6 +299,7 @@ export default function GarageHUD() {
     setScanning(true);
     setErrorMsg('');
     setScanResult(null);
+    setDuplicateMatches([]);
 
     try {
       const formData = new FormData();
@@ -282,6 +316,10 @@ export default function GarageHUD() {
       setScanResult(data as ScanResult);
       applyScanResult(data as ScanResult);
       setShowAddForm(true);
+
+      if (data.name) {
+        void checkForDuplicates(data.name, data.toy_number ?? '');
+      }
     } catch (error) {
       setErrorMsg(
         error instanceof Error
@@ -672,6 +710,31 @@ export default function GarageHUD() {
 
               <p className="mt-4 text-sm leading-6 text-slate-300">{scanResult.reason}</p>
 
+              {duplicateMatches.length > 0 && (
+                <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Possible duplicate
+                  </p>
+                  <p className="mt-1 text-sm text-amber-100">
+                    You already have {duplicateMatches.length} casting{duplicateMatches.length > 1 ? 's' : ''}{' '}
+                    matching this in your vault
+                    {duplicateMatches.some((match) => match.condition) && (
+                      <>
+                        {' '}
+                        (
+                        {duplicateMatches
+                          .map((match) => match.condition)
+                          .filter(Boolean)
+                          .join(', ')}
+                        )
+                      </>
+                    )}
+                    . You can still save this as an additional copy.
+                  </p>
+                </div>
+              )}
+
               {scanResult.photo_quality.issues.length > 0 && (
                 <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">Photo review</p>
@@ -700,6 +763,7 @@ export default function GarageHUD() {
                           setName(alternative.name);
                           setSeries(alternative.series);
                           if (alternative.year) setYear(String(alternative.year));
+                          void checkForDuplicates(alternative.name, '');
                         }}
                         className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-left transition hover:border-amber-500/50 hover:bg-amber-500/5"
                       >
@@ -730,10 +794,26 @@ export default function GarageHUD() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="Casting name" />
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                void checkForDuplicates(e.target.value, toyNumber);
+              }}
+              className="input-field"
+              placeholder="Casting name"
+            />
             <input value={series} onChange={(e) => setSeries(e.target.value)} className="input-field" placeholder="Series" />
             <input value={year} onChange={(e) => setYear(e.target.value)} className="input-field" inputMode="numeric" placeholder="Year" />
-            <input value={toyNumber} onChange={(e) => setToyNumber(e.target.value)} className="input-field" placeholder="Toy number / SKU" />
+            <input
+              value={toyNumber}
+              onChange={(e) => {
+                setToyNumber(e.target.value);
+                void checkForDuplicates(name, e.target.value);
+              }}
+              className="input-field"
+              placeholder="Toy number / SKU"
+            />
             <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">
               {RARITY.map((item) => <option key={item}>{item}</option>)}
             </select>
@@ -743,6 +823,18 @@ export default function GarageHUD() {
             <input value={value} onChange={(e) => setValue(e.target.value)} className="input-field" inputMode="decimal" placeholder="Estimated value" />
             <input value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field sm:col-span-2" placeholder="Notes (optional)" />
           </div>
+
+          {!scanResult && duplicateMatches.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Possible duplicate
+              </p>
+              <p className="mt-1 text-sm text-amber-100">
+                You already have {duplicateMatches.length} casting{duplicateMatches.length > 1 ? 's' : ''} matching this name or toy number in your vault.
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-3">
             <button
