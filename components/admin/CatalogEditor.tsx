@@ -335,7 +335,7 @@ export default function CatalogEditor() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-100 sm:text-3xl">Catalog Manager</h1>
           <p className="mt-1 text-sm text-slate-500">Curate the master catalog: castings, releases, and reference images.</p>
         </div>
-        <select value={selectedYearId} onChange={(e) => setSelectedYearId(e.target.value)} className="input-field w-fit">
+        <select id="catalog-year-select" name="catalog-year" value={selectedYearId} onChange={(e) => setSelectedYearId(e.target.value)} className="input-field w-fit">
           {years.map((year) => <option key={year.id} value={year.id}>{year.display_name}</option>)}
         </select>
       </div>
@@ -346,23 +346,23 @@ export default function CatalogEditor() {
           <label htmlFor="catalog-camera-input" className={`group inline-flex cursor-pointer items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition-all hover:border-amber-500/60 hover:bg-amber-500/20 ${scanning ? 'pointer-events-none cursor-not-allowed opacity-60' : ''}`}>
             {scanning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Analyzing photo...</> : <><ScanLine className="h-3.5 w-3.5" />Scan car with camera</>}
           </label>
-          <input id="catalog-camera-input" ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoSelected} className="sr-only" />
+          <input id="catalog-camera-input" name="catalog-camera-input" ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoSelected} className="sr-only" />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <input value={castingName} onChange={(e) => setCastingName(e.target.value)} className="input-field" placeholder="Casting name" />
-          <select value={formSeriesId} onChange={(e) => setFormSeriesId(e.target.value)} className="input-field">
+          <input id="casting-name" name="casting-name" value={castingName} onChange={(e) => setCastingName(e.target.value)} className="input-field" placeholder="Casting name" />
+          <select id="catalog-series-select" name="catalog-series" value={formSeriesId} onChange={(e) => setFormSeriesId(e.target.value)} className="input-field">
             {seriesList.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-          <input value={collectorNumber} onChange={(e) => setCollectorNumber(e.target.value)} className="input-field" placeholder="Collector number" />
-          <input value={toyNumber} onChange={(e) => setToyNumber(e.target.value)} className="input-field" placeholder="Toy number / SKU" />
-          <input value={themeSeries} onChange={(e) => setThemeSeries(e.target.value)} className="input-field" placeholder="Theme series (e.g. Exoticars)" />
-          <input value={themeSeriesNumber} onChange={(e) => setThemeSeriesNumber(e.target.value)} className="input-field" placeholder="Theme series number (e.g. 1/10)" />
-          <input value={releaseVariant} onChange={(e) => setReleaseVariant(e.target.value)} className="input-field" placeholder="Release variant (e.g. 1st Color)" />
-          <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">{RARITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select>
-          <input value={retailerExclusive} onChange={(e) => setRetailerExclusive(e.target.value)} className="input-field" placeholder="Retailer exclusive (optional)" />
-          <select value={releaseStatus} onChange={(e) => setReleaseStatus(e.target.value)} className="input-field">{STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option.replace('_', ' ')}</option>)}</select>
-          <input value={sourceNotes} onChange={(e) => setSourceNotes(e.target.value)} className="input-field sm:col-span-2 lg:col-span-3" placeholder="Source / verification notes" />
+          <input id="collector-number" name="collector-number" value={collectorNumber} onChange={(e) => setCollectorNumber(e.target.value)} className="input-field" placeholder="Collector number" />
+          <input id="toy-number" name="toy-number" value={toyNumber} onChange={(e) => setToyNumber(e.target.value)} className="input-field" placeholder="Toy number / SKU" />
+          <input id="theme-series" name="theme-series" value={themeSeries} onChange={(e) => setThemeSeries(e.target.value)} className="input-field" placeholder="Theme series (e.g. Exoticars)" />
+          <input id="theme-series-number" name="theme-series-number" value={themeSeriesNumber} onChange={(e) => setThemeSeriesNumber(e.target.value)} className="input-field" placeholder="Theme series number (e.g. 1/10)" />
+          <input id="release-variant" name="release-variant" value={releaseVariant} onChange={(e) => setReleaseVariant(e.target.value)} className="input-field" placeholder="Release variant (e.g. 1st Color)" />
+          <select id="rarity-select" name="rarity" value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">{RARITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select>
+          <input id="retailer-exclusive" name="retailer-exclusive" value={retailerExclusive} onChange={(e) => setRetailerExclusive(e.target.value)} className="input-field" placeholder="Retailer exclusive (optional)" />
+          <select id="release-status-select" name="release-status" value={releaseStatus} onChange={(e) => setReleaseStatus(e.target.value)} className="input-field">{STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option.replace('_', ' ')}</option>)}</select>
+          <input id="source-notes" name="source-notes" value={sourceNotes} onChange={(e) => setSourceNotes(e.target.value)} className="input-field sm:col-span-2 lg:col-span-3" placeholder="Source / verification notes" />
         </div>
 
         {errorMsg && <p className="mt-3 text-sm text-red-400">{errorMsg}</p>}
@@ -383,16 +383,16 @@ export default function CatalogEditor() {
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-300">
-              <input type="checkbox" checked={missingPhotosOnly} onChange={(e) => setMissingPhotosOnly(e.target.checked)} />
+              <input id="missing-photos-only" name="missing-photos-only" type="checkbox" checked={missingPhotosOnly} onChange={(e) => setMissingPhotosOnly(e.target.checked)} />
               Missing photos only
             </label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field w-full sm:w-40">
+            <select id="status-filter-select" name="status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field w-full sm:w-40">
               <option value="all">All statuses</option>
               {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option.replace('_', ' ')}</option>)}
             </select>
             <label className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 sm:w-64">
               <Search className="h-4 w-4 text-slate-500" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-transparent text-sm text-slate-100 outline-none" placeholder="Search releases" />
+              <input id="catalog-search" name="catalog-search" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-transparent text-sm text-slate-100 outline-none" placeholder="Search releases" />
             </label>
           </div>
         </div>
@@ -424,7 +424,7 @@ export default function CatalogEditor() {
                       <Star className="h-3 w-3" />{release.rarity}
                     </span>
                   )}
-                  <select value={release.release_status} onChange={(e) => void updateStatus(release.id, e.target.value)} className={`rounded-lg border px-2 py-1.5 text-xs font-semibold ${statusColor(release.release_status)}`}>
+                  <select value={release.release_status} onChange={(e) => void updateStatus(release.id, e.target.value)} className={`rounded-lg border px-2 py-1.5 text-xs font-semibold ${statusColor(release.release_status)}`} id={`release-status-${release.id}`} name={`release-status-${release.id}`}>
                     {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option.replace('_', ' ')}</option>)}
                   </select>
                   <button onClick={() => openImagePanel(release.id)} className="rounded-lg p-2 text-slate-500 transition hover:bg-sky-950/30 hover:text-sky-400" aria-label="Manage images">
@@ -459,12 +459,12 @@ export default function CatalogEditor() {
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    <select value={imageType} onChange={(e) => setImageType(e.target.value)} className="input-field">
+                    <select id={`image-type-${release.id}`} name={`image-type-${release.id}`} value={imageType} onChange={(e) => setImageType(e.target.value)} className="input-field">
                       {IMAGE_TYPES.map((type) => <option key={type} value={type}>{type.replace('_', ' ')}</option>)}
                     </select>
-                    <input value={imageCaption} onChange={(e) => setImageCaption(e.target.value)} className="input-field" placeholder="Caption (optional)" />
+                    <input id={`image-caption-${release.id}`} name={`image-caption-${release.id}`} value={imageCaption} onChange={(e) => setImageCaption(e.target.value)} className="input-field" placeholder="Caption (optional)" />
                     <label className="flex items-center gap-2 text-xs text-slate-400">
-                      <input type="checkbox" checked={imageIsPrimary} onChange={(e) => setImageIsPrimary(e.target.checked)} />
+                      <input id={`image-is-primary-${release.id}`} name={`image-is-primary-${release.id}`} type="checkbox" checked={imageIsPrimary} onChange={(e) => setImageIsPrimary(e.target.checked)} />
                       Set as primary
                     </label>
                   </div>
@@ -473,6 +473,7 @@ export default function CatalogEditor() {
                     <input
                       ref={imageUploadInputRef}
                       id={`catalog-image-upload-${release.id}`}
+                      name={`catalog-image-upload-${release.id}`}
                       type="file"
                       accept="image/*"
                       onChange={(e) => {
@@ -490,7 +491,7 @@ export default function CatalogEditor() {
                     </label>
 
                     <div className="flex flex-1 items-center gap-2">
-                      <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="input-field flex-1" placeholder="...or paste an image URL" />
+                      <input id={`image-url-${release.id}`} name={`image-url-${release.id}`} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="input-field flex-1" placeholder="...or paste an image URL" />
                       <button onClick={() => void addImageByUrl(release.id)} disabled={savingImage || !imageUrl.trim()} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60">
                         {savingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
                         Add URL
