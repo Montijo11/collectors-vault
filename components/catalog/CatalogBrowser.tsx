@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Car, ExternalLink, ImageOff, Search, Star } from 'lucide-react';
+import { Car, ExternalLink, ImageOff, Search, Star, TrendingUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/AuthContext';
 
 type CatalogYearOption = { id: string; year: number; display_name: string };
 
@@ -22,10 +23,16 @@ type CatalogReleaseRow = {
   rarity: string;
   retailer_exclusive: string | null;
   release_status: string;
+  view_count: number | null;
+  created_at: string | null;
   catalog_castings: { casting_name: string } | null;
   catalog_years: { year: number; display_name: string } | null;
   catalog_images: CatalogImageRow[] | null;
 };
+
+type RatingStat = { catalog_release_id: string; avg_score: number; rating_count: number };
+
+type SortMode = 'collector_number' | 'newest' | 'trending' | 'top_rated';
 
 const RARITY_OPTIONS = [
   'Mainline',
@@ -36,6 +43,13 @@ const RARITY_OPTIONS = [
   'RLC',
   'Convention Exclusive',
   'Other',
+];
+
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'collector_number', label: 'Collector number' },
+  { value: 'newest', label: 'Just added' },
+  { value: 'trending', label: 'Trending' },
+  { value: 'top_rated', label: 'Top rated' },
 ];
 
 function primaryPhoto(images: CatalogImageRow[] | null) {
@@ -67,9 +81,12 @@ const MATTEL_CREATIONS_URL = 'https://creations.mattel.com/pages/hot-wheels-coll
 
 export default function CatalogBrowser() {
   const supabase = createClient();
+  const { session } = useAuth();
 
   const [years, setYears] = useState<CatalogYearOption[]>([]);
   const [releases, setReleases] = useState<CatalogReleaseRow[]>([]);
+  const [ratingStats, setRatingStats] = useState<Record<string, RatingStat>>({});
+  const [myRatings, setMyRatings] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -77,6 +94,9 @@ export default function CatalogBrowser() {
   const [selectedYearId, setSelectedYearId] = useState('all');
   const [selectedRarity, setSelectedRarity] = useState('all');
   const [includeNeedsReview, setIncludeNeedsReview] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('collector_number');
+
+  const [viewedThisSession, setViewedThisSession] = useState<Set<string>>(new Set());
 
   async function loadYears() {
     const { data, error } = await supabase
@@ -92,6 +112,47 @@ export default function CatalogBrowser() {
     setYears((data ?? []) as CatalogYearOption[]);
   }
 
+  async function loadRatingStats(releaseIds: string[]) {
+    if (!releaseIds.length) {
+      setRatingStats({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('release_rating_stats')
+      .select('catalog_release_id, avg_score, rating_count')
+      .in('catalog_release_id', releaseIds);
+
+    if (error || !data) return;
+
+    const map: Record<string, RatingStat> = {};
+    (data as RatingStat[]).forEach((row) => {
+      map[row.catalog_release_id] = row;
+    });
+    setRatingStats(map);
+  }
+
+  async function loadMyRatings(releaseIds: string[]) {
+    if (!session?.user.id || !releaseIds.length) {
+      setMyRatings({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('release_ratings')
+      .select('catalog_release_id, score')
+      .eq('user_id', session.user.id)
+      .in('catalog_release_id', releaseIds);
+
+    if (error || !data) return;
+
+    const map: Record<string, number> = {};
+    data.forEach((row: { catalog_release_id: string; score: number }) => {
+      map[row.catalog_release_id] = row.score;
+    });
+    setMyRatings(map);
+  }
+
   async function loadReleases() {
     setLoading(true);
     setErrorMsg('');
@@ -101,13 +162,20 @@ export default function CatalogBrowser() {
     let query = supabase
       .from('catalog_releases')
       .select(
-        'id, collector_number, toy_number, theme_series, theme_series_number, release_variant, rarity, retailer_exclusive, release_status, catalog_castings(casting_name), catalog_years(year, display_name), catalog_images(image_url, image_type, is_primary)',
+        'id, collector_number, toy_number, theme_series, theme_series_number, release_variant, rarity, retailer_exclusive, release_status, view_count, created_at, catalog_castings(casting_name), catalog_years(year, display_name), catalog_images(image_url, image_type, is_primary)',
       )
-      .in('release_status', statuses)
-      .order('collector_number', { ascending: true });
+      .in('release_status', statuses);
 
     if (selectedYearId !== 'all') {
       query = query.eq('catalog_year_id', selectedYearId);
+    }
+
+    if (sortMode === 'newest') {
+      query = query.order('created_at', { ascending: false });
+    } else if (sortMode === 'trending') {
+      query = query.order('view_count', { ascending: false });
+    } else {
+      query = query.order('collector_number', { ascending: true });
     }
 
     const { data, error } = await query;
@@ -118,8 +186,13 @@ export default function CatalogBrowser() {
       return;
     }
 
-    setReleases((data ?? []) as unknown as CatalogReleaseRow[]);
+    const rows = (data ?? []) as unknown as CatalogReleaseRow[];
+    setReleases(rows);
     setLoading(false);
+
+    const ids = rows.map((row) => row.id);
+    void loadRatingStats(ids);
+    void loadMyRatings(ids);
   }
 
   useEffect(() => {
@@ -128,16 +201,61 @@ export default function CatalogBrowser() {
 
   useEffect(() => {
     void loadReleases();
-  }, [selectedYearId, includeNeedsReview]);
+  }, [selectedYearId, includeNeedsReview, sortMode]);
+
+  useEffect(() => {
+    if (session?.user.id) {
+      void loadMyRatings(releases.map((release) => release.id));
+    }
+  }, [session?.user.id]);
 
   const filtered = useMemo(() => {
-    return releases.filter((release) => {
+    let list = releases.filter((release) => {
       if (selectedRarity !== 'all' && release.rarity !== selectedRarity) return false;
 
       const haystack = `${release.catalog_castings?.casting_name ?? ''} ${release.collector_number ?? ''} ${release.toy_number ?? ''} ${release.theme_series ?? ''}`.toLowerCase();
       return haystack.includes(search.toLowerCase());
     });
-  }, [releases, search, selectedRarity]);
+
+    if (sortMode === 'top_rated') {
+      list = [...list].sort((a, b) => {
+        const scoreA = ratingStats[a.id]?.avg_score ?? -1;
+        const scoreB = ratingStats[b.id]?.avg_score ?? -1;
+        return scoreB - scoreA;
+      });
+    }
+
+    return list;
+  }, [releases, search, selectedRarity, sortMode, ratingStats]);
+
+  function registerView(releaseId: string) {
+    if (viewedThisSession.has(releaseId)) return;
+    setViewedThisSession((current) => new Set(current).add(releaseId));
+    void supabase.rpc('increment_release_view', { release_id_input: releaseId });
+  }
+
+  async function submitRating(releaseId: string, score: number) {
+    if (!session?.user.id) {
+      setErrorMsg('Sign in to rate castings.');
+      return;
+    }
+
+    setMyRatings((current) => ({ ...current, [releaseId]: score }));
+
+    const { error } = await supabase
+      .from('release_ratings')
+      .upsert(
+        { catalog_release_id: releaseId, user_id: session.user.id, score },
+        { onConflict: 'catalog_release_id,user_id' },
+      );
+
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+
+    void loadRatingStats([releaseId]);
+  }
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -154,7 +272,7 @@ export default function CatalogBrowser() {
       </div>
 
       <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:flex-row sm:flex-wrap sm:items-center">
-        <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 sm:min-w-[240px]">
+        <label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 sm:min-w-[220px]">
           <Search className="h-4 w-4 text-slate-500" />
           <input
             value={search}
@@ -165,9 +283,21 @@ export default function CatalogBrowser() {
         </label>
 
         <select
+          value={sortMode}
+          onChange={(event) => setSortMode(event.target.value as SortMode)}
+          className="input-field w-full sm:w-40"
+        >
+          {SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <select
           value={selectedYearId}
           onChange={(event) => setSelectedYearId(event.target.value)}
-          className="input-field w-full sm:w-44"
+          className="input-field w-full sm:w-40"
         >
           <option value="all">All years</option>
           {years.map((year) => (
@@ -180,7 +310,7 @@ export default function CatalogBrowser() {
         <select
           value={selectedRarity}
           onChange={(event) => setSelectedRarity(event.target.value)}
-          className="input-field w-full sm:w-44"
+          className="input-field w-full sm:w-40"
         >
           <option value="all">All rarities</option>
           {RARITY_OPTIONS.map((option) => (
@@ -196,7 +326,7 @@ export default function CatalogBrowser() {
             checked={includeNeedsReview}
             onChange={(event) => setIncludeNeedsReview(event.target.checked)}
           />
-          Include releases pending review
+          Include pending review
         </label>
       </div>
 
@@ -215,10 +345,13 @@ export default function CatalogBrowser() {
           {filtered.map((release) => {
             const photo = primaryPhoto(release.catalog_images);
             const castingName = release.catalog_castings?.casting_name ?? 'Unknown casting';
+            const stats = ratingStats[release.id];
+            const myScore = myRatings[release.id] ?? 0;
 
             return (
               <article
                 key={release.id}
+                onMouseEnter={() => registerView(release.id)}
                 className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 transition hover:border-amber-500/40"
               >
                 <div className="relative aspect-square w-full bg-slate-950">
@@ -249,6 +382,13 @@ export default function CatalogBrowser() {
                       Pending review
                     </span>
                   )}
+
+                  {sortMode === 'trending' && (
+                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950/80 px-2 py-1 text-[10px] font-bold text-slate-300">
+                      <TrendingUp className="h-3 w-3" />
+                      {release.view_count ?? 0} views
+                    </span>
+                  )}
                 </div>
 
                 <div className="p-4">
@@ -267,6 +407,33 @@ export default function CatalogBrowser() {
                       {release.retailer_exclusive} Exclusive
                     </p>
                   )}
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => void submitRating(release.id, star)}
+                          className="p-0.5"
+                          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${
+                              star <= myScore
+                                ? 'fill-amber-400 text-amber-400'
+                                : 'text-slate-700 hover:text-amber-500/60'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    {stats && stats.rating_count > 0 && (
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        {stats.avg_score} ({stats.rating_count})
+                      </span>
+                    )}
+                  </div>
 
                   <a
                     href={hotWheelsWikiSearchUrl(castingName)}
