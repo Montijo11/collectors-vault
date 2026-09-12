@@ -12,7 +12,9 @@ import {
   AlertTriangle,
   Calendar,
   Car,
+  CheckCircle2,
   CirclePlus,
+  ExternalLink,
   Hash,
   ImageOff,
   ImagePlus,
@@ -21,6 +23,7 @@ import {
   Package,
   ScanLine,
   Search,
+  SearchCheck,
   Star,
   Tag,
   Trash2,
@@ -38,6 +41,8 @@ type GarageItem = {
   series: string | null;
   year: number | null;
   toy_number: string | null;
+  collector_number: string | null;
+  set_number: string | null;
   condition: string | null;
   rarity: string | null;
   estimated_value: number | null;
@@ -84,6 +89,15 @@ type DuplicateMatch = {
   id: string;
   casting_name: string;
   condition: string | null;
+};
+
+type ExactMatchResult = {
+  releaseId: string;
+  castingName: string;
+  series: string | null;
+  year: number | null;
+  rarity: string;
+  imageUrl: string | null;
 };
 
 const RARITY = [
@@ -134,6 +148,19 @@ function confidenceStyle(status: ScanStatus) {
   };
 }
 
+function hotWheelsWikiPageUrl(castingName: string) {
+  const pageTitle = castingName
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('_');
+  return `https://hotwheels.fandom.com/wiki/${encodeURIComponent(pageTitle)}`;
+}
+
+function hotWheelsWikiSearchUrl(castingName: string) {
+  return `https://hotwheels.fandom.com/wiki/Special:Search?query=${encodeURIComponent(castingName)}`;
+}
+
 export default function GarageHUD() {
   const supabase = createClient();
   const { session } = useAuth();
@@ -154,6 +181,8 @@ export default function GarageHUD() {
   const [series, setSeries] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [toyNumber, setToyNumber] = useState('');
+  const [collectorNumber, setCollectorNumber] = useState('');
+  const [setNumber, setSetNumber] = useState('');
   const [rarity, setRarity] = useState('Mainline');
   const [condition, setCondition] = useState('Mint');
   const [value, setValue] = useState('0');
@@ -168,6 +197,16 @@ export default function GarageHUD() {
   const [contributing, setContributing] = useState(false);
 
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([]);
+
+  const [exactMatch, setExactMatch] = useState<ExactMatchResult | null>(null);
+  const [exactMatchSearched, setExactMatchSearched] = useState(false);
+  const [findingExactMatch, setFindingExactMatch] = useState(false);
+
+  const criteriaComplete =
+    name.trim().length > 0 &&
+    toyNumber.trim().length > 0 &&
+    collectorNumber.trim().length > 0 &&
+    setNumber.trim().length > 0;
 
   async function loadItems() {
     if (!session?.user.id) return;
@@ -198,6 +237,11 @@ export default function GarageHUD() {
     };
   }, [photoPreviews]);
 
+  useEffect(() => {
+    setExactMatch(null);
+    setExactMatchSearched(false);
+  }, [name, toyNumber, collectorNumber, setNumber]);
+
   const filtered = useMemo(
     () =>
       items.filter((item) =>
@@ -216,12 +260,16 @@ export default function GarageHUD() {
     setSeries('');
     setYear(String(new Date().getFullYear()));
     setToyNumber('');
+    setCollectorNumber('');
+    setSetNumber('');
     setRarity('Mainline');
     setCondition('Mint');
     setValue('0');
     setNotes('');
     setScanResult(null);
     setDuplicateMatches([]);
+    setExactMatch(null);
+    setExactMatchSearched(false);
   }
 
   function clearPhotos() {
@@ -267,14 +315,14 @@ export default function GarageHUD() {
     if (result.rarity && RARITY.includes(result.rarity)) setRarity(result.rarity);
   }
 
-  async function checkForDuplicates(castingName: string, toyNumber: string) {
+  async function checkForDuplicates(castingName: string, toyNum: string) {
     if (!session?.user.id || !castingName.trim()) {
       setDuplicateMatches([]);
       return;
     }
 
     const orFilters = [`casting_name.ilike.%${castingName.trim()}%`];
-    if (toyNumber.trim()) orFilters.push(`toy_number.eq.${toyNumber.trim()}`);
+    if (toyNum.trim()) orFilters.push(`toy_number.eq.${toyNum.trim()}`);
 
     const { data, error } = await supabase
       .from('registry_items')
@@ -288,6 +336,59 @@ export default function GarageHUD() {
     }
 
     setDuplicateMatches(data as DuplicateMatch[]);
+  }
+
+  async function findExactMatch() {
+    if (!criteriaComplete || findingExactMatch) return;
+
+    setFindingExactMatch(true);
+    setExactMatchSearched(false);
+    setErrorMsg('');
+
+    const { data: castingMatch } = await supabase
+      .from('catalog_castings')
+      .select('id, casting_name')
+      .ilike('casting_name', name.trim())
+      .maybeSingle();
+
+    if (!castingMatch) {
+      setExactMatch(null);
+      setExactMatchSearched(true);
+      setFindingExactMatch(false);
+      return;
+    }
+
+    const { data: releaseMatch } = await supabase
+      .from('catalog_releases')
+      .select('id, series, rarity, catalog_images(image_url, is_primary), catalog_years(year)')
+      .eq('catalog_casting_id', castingMatch.id)
+      .eq('toy_number', toyNumber.trim())
+      .eq('collector_number', collectorNumber.trim())
+      .eq('set_number', setNumber.trim())
+      .maybeSingle();
+
+    setFindingExactMatch(false);
+    setExactMatchSearched(true);
+
+    if (!releaseMatch) {
+      setExactMatch(null);
+      return;
+    }
+
+    const images = (releaseMatch as any).catalog_images as
+      | { image_url: string; is_primary: boolean }[]
+      | null;
+    const primaryImage = images?.find((img) => img.is_primary) ?? images?.[0] ?? null;
+    const yearRow = (releaseMatch as any).catalog_years as { year: number } | null;
+
+    setExactMatch({
+      releaseId: releaseMatch.id,
+      castingName: castingMatch.casting_name,
+      series: (releaseMatch as any).series ?? null,
+      year: yearRow?.year ?? null,
+      rarity: releaseMatch.rarity,
+      imageUrl: primaryImage?.image_url ?? null,
+    });
   }
 
   async function analyzePhotos() {
@@ -447,6 +548,8 @@ export default function GarageHUD() {
       series: series.trim() || 'Uncategorized',
       year: Number(year) || new Date().getFullYear(),
       toy_number: toyNumber.trim() || null,
+      collector_number: collectorNumber.trim() || null,
+      set_number: setNumber.trim() || null,
       rarity,
       condition,
       estimated_value: Number(value) || 0,
@@ -609,6 +712,7 @@ export default function GarageHUD() {
           <input
             ref={fileInputRef}
             id="vault-ai-photo-input"
+            name="vault-ai-photo-input"
             type="file"
             accept="image/*"
             capture="environment"
@@ -788,13 +892,15 @@ export default function GarageHUD() {
             <div>
               <h2 className="font-semibold text-slate-100">Add a casting</h2>
               <p className="text-xs text-slate-500">
-                Review AI suggestions and confirm the details before saving.
+                Fill in casting name, toy #, collector #, and set # to find the exact match.
               </p>
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <input
+              id="vault-casting-name"
+              name="vault-casting-name"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -803,26 +909,138 @@ export default function GarageHUD() {
               className="input-field"
               placeholder="Casting name"
             />
-            <input value={series} onChange={(e) => setSeries(e.target.value)} className="input-field" placeholder="Series" />
-            <input value={year} onChange={(e) => setYear(e.target.value)} className="input-field" inputMode="numeric" placeholder="Year" />
+            <input id="vault-series" name="vault-series" value={series} onChange={(e) => setSeries(e.target.value)} className="input-field" placeholder="Series" />
+            <input id="vault-year" name="vault-year" value={year} onChange={(e) => setYear(e.target.value)} className="input-field" inputMode="numeric" placeholder="Year" />
             <input
+              id="vault-toy-number"
+              name="vault-toy-number"
               value={toyNumber}
               onChange={(e) => {
                 setToyNumber(e.target.value);
                 void checkForDuplicates(name, e.target.value);
               }}
               className="input-field"
-              placeholder="Toy number / SKU"
+              placeholder="Toy number"
             />
-            <select value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">
+            <input
+              id="vault-collector-number"
+              name="vault-collector-number"
+              value={collectorNumber}
+              onChange={(e) => setCollectorNumber(e.target.value)}
+              className="input-field"
+              placeholder="Collector number"
+            />
+            <input
+              id="vault-set-number"
+              name="vault-set-number"
+              value={setNumber}
+              onChange={(e) => setSetNumber(e.target.value)}
+              className="input-field"
+              placeholder="Set number"
+            />
+            <select id="vault-rarity" name="vault-rarity" value={rarity} onChange={(e) => setRarity(e.target.value)} className="input-field">
               {RARITY.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <select value={condition} onChange={(e) => setCondition(e.target.value)} className="input-field">
+            <select id="vault-condition" name="vault-condition" value={condition} onChange={(e) => setCondition(e.target.value)} className="input-field">
               {CONDITIONS.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <input value={value} onChange={(e) => setValue(e.target.value)} className="input-field" inputMode="decimal" placeholder="Estimated value" />
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field sm:col-span-2" placeholder="Notes (optional)" />
+            <input id="vault-value" name="vault-value" value={value} onChange={(e) => setValue(e.target.value)} className="input-field" inputMode="decimal" placeholder="Estimated value" />
+            <input id="vault-notes" name="vault-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="input-field sm:col-span-2" placeholder="Notes (optional)" />
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void findExactMatch()}
+              disabled={!criteriaComplete || findingExactMatch}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {findingExactMatch ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SearchCheck className="h-4 w-4" />
+              )}
+              {findingExactMatch ? 'Searching...' : 'Find exact match'}
+            </button>
+            {!criteriaComplete && (
+              <p className="text-xs text-slate-500">
+                Fill in casting name, toy #, collector #, and set # to search.
+              </p>
+            )}
+          </div>
+
+          {exactMatchSearched && exactMatch && (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Exact catalog match found
+              </p>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                {exactMatch.imageUrl ? (
+                  <img
+                    src={exactMatch.imageUrl}
+                    alt={exactMatch.castingName}
+                    className="h-20 w-20 rounded-lg border border-slate-700 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-600">
+                    <ImageOff className="h-6 w-6" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="font-semibold text-slate-100">{exactMatch.castingName}</p>
+                  <p className="text-xs text-slate-400">
+                    {[exactMatch.series, exactMatch.year, exactMatch.rarity].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={hotWheelsWikiPageUrl(exactMatch.castingName)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                View on Hot Wheels Wiki
+              </a>
+              <p className="mt-2 text-[11px] text-slate-500">
+                This link is our best guess at the exact Wiki page for this casting. If it
+                doesn't land on the right page,{' '}
+                <a
+                  href={hotWheelsWikiSearchUrl(exactMatch.castingName)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-amber-400"
+                >
+                  search the Wiki directly
+                </a>
+                .
+              </p>
+            </div>
+          )}
+
+          {exactMatchSearched && !exactMatch && (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                No exact catalog match yet
+              </p>
+              <p className="mt-1 text-sm text-amber-100">
+                Nothing in our catalog matches this casting name, toy #, collector #, and set #
+                combination exactly. You can still save it to your Vault manually, and it may
+                help fill a gap in the catalog once verified.
+              </p>
+              <a
+                href={hotWheelsWikiSearchUrl(name)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-amber-500/50 hover:text-amber-300"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Search Hot Wheels Wiki instead
+              </a>
+            </div>
+          )}
 
           {!scanResult && duplicateMatches.length > 0 && (
             <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
@@ -863,6 +1081,8 @@ export default function GarageHUD() {
           <label className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 sm:w-72">
             <Search className="h-4 w-4 text-slate-500" />
             <input
+              id="vault-inventory-search"
+              name="vault-inventory-search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-transparent text-sm text-slate-100 outline-none"
@@ -960,6 +1180,8 @@ export default function GarageHUD() {
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <DetailRow icon={<Calendar className="h-4 w-4" />} label="Year" value={String(selectedItem.year ?? '—')} />
                 <DetailRow icon={<Hash className="h-4 w-4" />} label="Toy number" value={selectedItem.toy_number ?? '—'} />
+                <DetailRow icon={<Hash className="h-4 w-4" />} label="Collector #" value={selectedItem.collector_number ?? '—'} />
+                <DetailRow icon={<Hash className="h-4 w-4" />} label="Set #" value={selectedItem.set_number ?? '—'} />
                 <DetailRow icon={<Package className="h-4 w-4" />} label="Condition" value={selectedItem.condition ?? '—'} />
                 <DetailRow icon={<Tag className="h-4 w-4" />} label="Est. value" value={`$${(selectedItem.estimated_value ?? 0).toFixed(2)}`} />
               </div>
